@@ -2,6 +2,7 @@
   "name": "myapp",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@8.6.5",
   "scripts": {
     "local:up": "node -e \"require('fs').mkdirSync('local/.floci',{recursive:true})\" && podman compose -f local/docker-compose.yml up -d --wait",
     "local:down": "podman compose -f local/docker-compose.yml down",
