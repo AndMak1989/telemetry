@@ -1,0 +1,8 @@
+node_modules
+dist
+cdk.out
+.env.local
+.env.generated
+local/.floci
+local/.keys
+*.tsbuildinfo

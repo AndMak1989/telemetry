@@ -1,0 +1,24 @@
+services:
+  mongo:
+    image: docker.io/library/mongo:8
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27018"]
+    ports: ["27018:27018"]
+    volumes: ["mongo-data:/data/db"]
+    healthcheck:
+      # Initiates the replica set on first start, then reports healthy.
+      test: ["CMD", "mongosh", "--quiet", "--port", "27018", "--eval",
+             "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: '127.0.0.1:27018' }] }).ok }"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 5s
+
+  floci:
+    image: docker.io/floci/floci:2.3.0   # the version this setup was tested with; bump it on purpose
+    ports: ["4566:4566"]
+    environment:
+      - FLOCI_DEFAULT_REGION=us-east-1
+    volumes: ["./.floci:/app/data"]
+
+volumes:
+  mongo-data: {}

@@ -1,0 +1,39 @@
+{
+  "name": "myapp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "local:up": "node -e \"require('fs').mkdirSync('local/.floci',{recursive:true})\" && podman compose -f local/docker-compose.yml up -d --wait",
+    "local:down": "podman compose -f local/docker-compose.yml down",
+    "local:reset": "podman compose -f local/docker-compose.yml down -v && node -e \"for(const p of ['local/.floci','local/.keys','.env.generated'])require('fs').rmSync(p,{recursive:true,force:true})\"",
+    "local:bootstrap": "tsx --env-file=.env.local local/bootstrap.ts",
+    "migrate": "tsx --env-file=.env.local scripts/migrate.ts",
+    "token": "tsx --env-file=.env.local local/make-token.ts",
+    "dev:api": "node local/run.mjs api",
+    "dev:workers": "node local/run.mjs workers",
+    "dev:web": "pnpm --filter web dev",
+    "dev": "concurrently -n api,workers,web -c blue,magenta,green \"pnpm dev:api\" \"pnpm dev:workers\" \"pnpm dev:web\"",
+    "test": "pnpm --filter services test",
+    "typecheck": "tsc --noEmit && pnpm -r exec tsc --noEmit",
+    "synth": "pnpm --filter infra exec cdk synth -c stage=dev",
+    "synth:sam": "pnpm --filter infra exec cdk synth -c stage=dev -c samLocal=true"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-eventbridge": "^3.1157.0",
+    "@aws-sdk/client-sqs": "^3.1157.0",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.300.0",
+    "@opentelemetry/instrumentation-aws-sdk": "^0.79.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-mongodb": "^0.77.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
+    "@opentelemetry/sdk-trace-base": "^2.12.0",
+    "@types/aws-lambda": "^8.10.164",
+    "@types/node": "^26.6.5",
+    "concurrently": "^10.0.6",
+    "jose": "^6.2.13",
+    "mongodb": "^7.7.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "app": "npx tsx bin/app.ts",
+  "context": {
+    "dev": {
+      "region": "us-east-1",
+      "auth0Domain": "dev-evoujcwl7t3aoxy8.us.auth0.com",
+      "auth0Audience": "https://api.dev.acme.com",
+      "webOrigin": "http://localhost:5173",
+      "alarmEmail": "you@company.com",
+      "otel": {
+        "enabled": false,
+        "samplingRatio": 1,
+        "nodejsLayerArn": "arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-nodejs-<VERSION>:1",
+        "collectorLayerArn": "arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-arm64-<VERSION>:1",
+        "grafanaOtlpEndpoint": "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
+      }
+    }
+  }
+}

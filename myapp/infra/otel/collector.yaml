@@ -1,0 +1,28 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: localhost:4317
+      http:
+        endpoint: localhost:4318
+
+processors:
+  # Lets the function return while the extension finishes exporting.
+  decouple: {}
+
+exporters:
+  otlphttp/newrelic:
+    endpoint: https://otlp.nr-data.net          # EU accounts: https://otlp.eu01.nr-data.net
+    headers:
+      api-key: ${env:NEW_RELIC_LICENSE_KEY}
+  otlphttp/grafana:
+    endpoint: ${env:GRAFANA_OTLP_ENDPOINT}       # https://otlp-gateway-prod-<region>.grafana.net/otlp
+    headers:
+      Authorization: Basic ${env:GRAFANA_OTLP_AUTH}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [decouple]
+      exporters: [otlphttp/newrelic, otlphttp/grafana]

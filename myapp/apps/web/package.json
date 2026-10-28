@@ -1,0 +1,25 @@
+{
+  "name": "web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@auth0/auth0-react": "^2.29.0",
+    "@grafana/faro-react": "^2.13.0",
+    "@grafana/faro-web-tracing": "^2.13.0",
+    "@myapp/shared": "workspace:^",
+    "@newrelic/browser-agent": "^1.324.1",
+    "@tanstack/react-query": "^5.105.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.5"
+  }
+}
