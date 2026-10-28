@@ -16,7 +16,12 @@
     "test": "pnpm --filter services test",
     "typecheck": "tsc --noEmit && pnpm -r exec tsc --noEmit",
     "synth": "pnpm --filter infra exec cdk synth -c stage=dev",
-    "synth:sam": "pnpm --filter infra exec cdk synth -c stage=dev -c samLocal=true"
+    "synth:sam": "pnpm --filter infra exec cdk synth -c stage=dev -c samLocal=true",
+    "synth:prod": "pnpm --filter infra exec cdk synth -c stage=prod",
+    "diff:dev": "pnpm --filter infra exec cdk diff -c stage=dev",
+    "diff:prod": "pnpm --filter infra exec cdk diff -c stage=prod",
+    "deploy:dev": "pnpm --filter infra exec cdk deploy -c stage=dev",
+    "deploy:prod": "pnpm --filter infra exec cdk deploy -c stage=prod --require-approval any-change"
   },
   "devDependencies": {
     "@aws-sdk/client-eventbridge": "^3.1157.0",

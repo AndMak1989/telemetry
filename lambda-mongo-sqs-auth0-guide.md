@@ -1508,7 +1508,7 @@ services:
       start_period: 5s
 
   floci:
-    image: floci/floci:latest   # pin a version once things work
+    image: floci/floci:2.3.0   # pinned; bump it on purpose
     ports: ["4566:4566"]
     environment:
       - FLOCI_DEFAULT_REGION=us-east-1

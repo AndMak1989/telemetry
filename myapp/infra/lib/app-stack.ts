@@ -19,24 +19,23 @@ import { CorsHttpMethod, HttpApi, HttpMethod, type CfnStage } from 'aws-cdk-lib/
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { API_ROUTES } from '../../services/src/routes';
-import { otelBundling, otelEnvironment, otelLayers, type OtelConfig } from './otel';
+import { otelBundling, otelEnvironment, otelLayers } from './otel';
+import type { StageConfig } from './config';
 
 export interface AppStackProps extends StackProps {
-  stage: 'dev' | 'prod';
-  auth0Domain: string;   // myapp-dev.us.auth0.com
-  auth0Audience: string; // https://api.dev.acme.com
-  webOrigin: string;     // https://app.myapp.example
-  alarmEmail: string;
-  otel?: OtelConfig;
+  config: StageConfig;
 }
 
 export class AppStack extends Stack {
   constructor(scope: Construct, id: string, props: AppStackProps) {
     super(scope, id, props);
-    const prefix = `myapp-${props.stage}`;
+    const cfg = props.config;
+    const prefix = `myapp-${cfg.stage}`;
+    // Prod keeps logs and dead letters when a resource is replaced or the stack is deleted; dev cleans up.
+    const keep = cfg.stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY;
 
     // ---------- Secrets (create the SecureString yourself; see §15) ----------
-    const mongoUriParamName = `/myapp/${props.stage}/mongo-uri`;
+    const mongoUriParamName = `/myapp/${cfg.stage}/mongo-uri`;
     const mongoUriParam = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'MongoUri', {
       parameterName: mongoUriParamName,
     });
@@ -48,6 +47,7 @@ export class AppStack extends Stack {
         retentionPeriod: Duration.days(14),
         encryption: sqs.QueueEncryption.SQS_MANAGED,
         enforceSSL: true,
+        removalPolicy: keep,
       });
       const queue = new sqs.Queue(this, `${name}Queue`, {
         queueName: `${prefix}-${name}`,
@@ -75,6 +75,7 @@ export class AppStack extends Stack {
       retentionPeriod: Duration.days(14),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
       enforceSSL: true,
+      removalPolicy: keep,
     });
 
     new events.Rule(this, 'OrderConfirmedToNotifications', {
@@ -102,7 +103,7 @@ export class AppStack extends Stack {
       ...(samLocal ? { MONGO_URI: 'set-by-sam-env', AWS_ENDPOINT_URL: 'set-by-sam-env' } : {}),
     };
 
-    const otel = props.otel?.enabled ? props.otel : undefined;
+    const otel = cfg.otel?.enabled ? cfg.otel : undefined;
     const layers = otel ? otelLayers(this, otel) : [];
     // sameEnvironment: true guarantees CDK adds the logs.amazonaws.com invoke permission that each
     // subscription filter needs; without it CloudFormation rejects the filter and rolls back.
@@ -115,8 +116,8 @@ export class AppStack extends Stack {
 
     const fn = (name: string, entry: string, extra: Partial<NodejsFunctionProps> = {}) => {
       const logGroup = new logs.LogGroup(this, `${name}Logs`, {
-        retention: logs.RetentionDays.TWO_WEEKS,
-        removalPolicy: RemovalPolicy.DESTROY,
+        retention: cfg.logRetentionDays,
+        removalPolicy: keep,
       });
       const f = new NodejsFunction(this, name, {
         entry: path.join(__dirname, '../../services/src/functions', entry),
@@ -143,7 +144,7 @@ export class AppStack extends Stack {
         environment: {
           ...commonEnv,
           POWERTOOLS_SERVICE_NAME: name,
-          ...(otel ? otelEnvironment(otel, name, props.stage) : {}),
+          ...(otel ? otelEnvironment(otel, name, cfg.stage) : {}),
           ...extra.environment,
         },
       });
@@ -186,7 +187,8 @@ export class AppStack extends Stack {
         batchSize: 10,
         maxBatchingWindow: Duration.seconds(2),
         reportBatchItemFailures: true,
-        maxConcurrency: 2, // protects Mongo M0 (100 ops/s, 500 connections)
+        // Protects Mongo: concurrency × MONGO_MAX_POOL_SIZE must stay well under the tier's connection limit.
+        maxConcurrency: cfg.workerMaxConcurrency,
       });
     ordersWorker.addEventSource(sqsSource(orders.queue));
     notificationsWorker.addEventSource(sqsSource(notifications.queue));
@@ -199,14 +201,14 @@ export class AppStack extends Stack {
     });
 
     // ---------- HTTP API ----------
-    const authorizer = new HttpJwtAuthorizer('Auth0Authorizer', `https://${props.auth0Domain}/`, {
-      jwtAudience: [props.auth0Audience],
+    const authorizer = new HttpJwtAuthorizer('Auth0Authorizer', `https://${cfg.auth0Domain}/`, {
+      jwtAudience: [cfg.auth0Audience],
     });
     const api = new HttpApi(this, 'Api', {
       apiName: `${prefix}-api`,
       defaultAuthorizer: authorizer,
       corsPreflight: {
-        allowOrigins: [props.webOrigin],
+        allowOrigins: [cfg.webOrigin],
         allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.DELETE],
         // trace headers let the browser agents link their requests to backend traces (§16.9)
         allowHeaders: ['authorization', 'content-type', 'traceparent', 'tracestate', 'newrelic'],
@@ -219,11 +221,30 @@ export class AppStack extends Stack {
     }
     // Stage-wide throttling (cheap DoS protection)
     const stage = api.defaultStage?.node.defaultChild as CfnStage;
-    stage.defaultRouteSettings = { throttlingRateLimit: 25, throttlingBurstLimit: 50 };
+    stage.defaultRouteSettings = {
+      throttlingRateLimit: cfg.apiThrottle.rateLimit,
+      throttlingBurstLimit: cfg.apiThrottle.burstLimit,
+    };
+    // Access logs: one JSON line per request, including the ones the authorizer rejects before any Lambda runs.
+    const accessLogs = new logs.LogGroup(this, 'ApiAccessLogs', { retention: cfg.logRetentionDays, removalPolicy: keep });
+    stage.accessLogSettings = {
+      destinationArn: accessLogs.logGroupArn,
+      format: JSON.stringify({
+        requestId: '$context.requestId',
+        ip: '$context.identity.sourceIp',
+        requestTime: '$context.requestTime',
+        routeKey: '$context.routeKey',
+        status: '$context.status',
+        latencyMs: '$context.responseLatency',
+        userSub: '$context.authorizer.claims.sub',
+        authorizerError: '$context.authorizer.error',
+        integrationError: '$context.integrationErrorMessage',
+      }),
+    };
 
     // ---------- Alarms (10 free) ----------
     const alarmTopic = new sns.Topic(this, 'Alarms');
-    alarmTopic.addSubscription(new subs.EmailSubscription(props.alarmEmail));
+    alarmTopic.addSubscription(new subs.EmailSubscription(cfg.alarmEmail));
     const alarm = (id: string, metric: cloudwatch.IMetric, threshold: number) =>
       new cloudwatch.Alarm(this, id, {
         metric,
@@ -238,6 +259,8 @@ export class AppStack extends Stack {
     alarm('EventTargetDlqNotEmpty', eventTargetDlq.metricApproximateNumberOfMessagesVisible(), 1);
     alarm('OrdersBacklogOld', orders.queue.metricApproximateAgeOfOldestMessage({ period: Duration.minutes(5) }), 600);
     alarm('ApiErrors', ordersApi.metricErrors({ period: Duration.minutes(5) }), 5);
+    // 5xx that never reach the function's error count: integration timeouts, throttled Lambda.
+    alarm('Api5xx', api.metricServerError({ period: Duration.minutes(5) }), 5);
     alarm('WorkerErrors', ordersWorker.metricErrors({ period: Duration.minutes(5) }), 5);
     alarm('NotificationsWorkerErrors', notificationsWorker.metricErrors({ period: Duration.minutes(5) }), 5);
     alarm('SweeperErrors', outboxSweeper.metricErrors({ period: Duration.minutes(15) }), 1);

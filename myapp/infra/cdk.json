@@ -7,9 +7,30 @@
       "auth0Audience": "https://api.dev.acme.com",
       "webOrigin": "http://localhost:5173",
       "alarmEmail": "you@company.com",
+      "workerMaxConcurrency": 2,
+      "apiThrottle": { "rateLimit": 25, "burstLimit": 50 },
+      "logRetentionDays": 14,
       "otel": {
         "enabled": false,
         "samplingRatio": 1,
+        "nodejsLayerArn": "arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-nodejs-<VERSION>:1",
+        "collectorLayerArn": "arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-arm64-<VERSION>:1",
+        "grafanaOtlpEndpoint": "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"
+      }
+    },
+    "prod": {
+      "account": "<PROD_ACCOUNT_ID>",
+      "region": "us-east-1",
+      "auth0Domain": "<PROD_TENANT>.us.auth0.com",
+      "auth0Audience": "https://api.acme.com",
+      "webOrigin": "https://<PROD_WEB_HOST>",
+      "alarmEmail": "<ONCALL_EMAIL>",
+      "workerMaxConcurrency": 10,
+      "apiThrottle": { "rateLimit": 100, "burstLimit": 200 },
+      "logRetentionDays": 90,
+      "otel": {
+        "enabled": false,
+        "samplingRatio": 0.1,
         "nodejsLayerArn": "arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-nodejs-<VERSION>:1",
         "collectorLayerArn": "arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-arm64-<VERSION>:1",
         "grafanaOtlpEndpoint": "https://otlp-gateway-prod-us-east-0.grafana.net/otlp"

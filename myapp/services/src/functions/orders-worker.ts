@@ -29,13 +29,15 @@ async function recordHandler(record: SQSRecord): Promise<void> {
       logger.warn('Order not pending; nothing to do', { orderId: msg.orderId, correlationId });
       return;
     }
-    // Stored with the outbox row, so an event the sweeper publishes later still joins this trace.
+    // traceparent is stored with the outbox row, so an event the sweeper publishes later still joins this trace.
+    // Optional fields are left out rather than set to undefined: Mongo would store null, which consumers reject.
+    const traceparent = currentTraceparent();
     const detail: OrderConfirmedDetail = {
       version: 1,
       orderId: msg.orderId,
       confirmedAt: now.toISOString(),
-      correlationId,
-      traceparent: currentTraceparent(),
+      ...(correlationId && { correlationId }),
+      ...(traceparent && { traceparent }),
     };
     outboxId = await addToOutbox(db, session, {
       kind: 'event',
