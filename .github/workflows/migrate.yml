@@ -1,0 +1,63 @@
+name: Migrate
+
+# Push a tag to run the Mongo migration (scripts/migrate.ts) against one stage:
+#   git tag migrate-dev-2026-10-29.1 && git push origin migrate-dev-2026-10-29.1
+#   git tag migrate-prod-2026-10-29.1 && git push origin migrate-prod-2026-10-29.1
+# Each stage is a GitHub Environment (dev / prod) holding its own MONGO_URI secret.
+# Give "prod" required reviewers so a prod migration waits for approval.
+on:
+  push:
+    tags:
+      - 'migrate-dev-*'
+      - 'migrate-prod-*'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: myapp
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ${{ startsWith(github.ref_name, 'migrate-prod-') && 'prod' || 'dev' }}
+    # One migration per stage at a time; never cancel one halfway.
+    concurrency:
+      group: migrate-${{ startsWith(github.ref_name, 'migrate-prod-') && 'prod' || 'dev' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history, to check the tag below
+
+      # A tag can point at any commit, including one from an unreviewed branch.
+      # Only migrate code that has landed on master.
+      - name: Tagged commit is on master
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/master
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: myapp/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: myapp/.nvmrc
+          cache: pnpm
+          cache-dependency-path: myapp/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check the secret is set
+        run: test -n "$MONGO_URI" || { echo "::error::MONGO_URI secret missing in environment"; exit 1; }
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+
+      # .env.local is not in the repo, so call the script directly (no --env-file).
+      - name: Migrate
+        run: pnpm exec tsx scripts/migrate.ts
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MONGO_DB_NAME: myapp
